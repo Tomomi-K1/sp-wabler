@@ -200,6 +200,7 @@ nav + .container {
   height: 360px;
   margin-top: -16px;
   opacity: 0.7;
+  background-image: url({{user.header_image_url}});
   background-size: cover;
   background-position: top center;
 }

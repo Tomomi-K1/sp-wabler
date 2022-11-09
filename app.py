@@ -1,11 +1,12 @@
 import os
 
 from flask import Flask, render_template, request, flash, redirect, session, g
+# need to import "g" https://flask.palletsprojects.com/en/1.1.x/api/#flask.g
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
-from forms import UserAddForm, LoginForm, MessageForm
-from models import db, connect_db, User, Message
+from forms import UserAddForm, LoginForm, MessageForm, UserUpdateForm
+from models import db, connect_db, User, Message, Follows, Likes
 
 CURR_USER_KEY = "curr_user"
 
@@ -18,7 +19,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = (
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
-app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
+app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', "it's a secret")
 toolbar = DebugToolbarExtension(app)
 
@@ -28,13 +29,14 @@ connect_db(app)
 ##############################################################################
 # User signup/login/logout
 
-
+# this will run before every request."before_request" =Register a function to run before each request.
 @app.before_request
 def add_user_to_g():
     """If we're logged in, add curr user to Flask global."""
 
     if CURR_USER_KEY in session:
         g.user = User.query.get(session[CURR_USER_KEY])
+        # g is an object for storing data during the application context of a running Flask web app. By adding the user to g, we can use user info anywhere.
 
     else:
         g.user = None
@@ -42,7 +44,7 @@ def add_user_to_g():
 
 def do_login(user):
     """Log in user."""
-
+    # user is put in session
     session[CURR_USER_KEY] = user.id
 
 
@@ -113,7 +115,9 @@ def login():
 def logout():
     """Handle logout of user."""
 
-    # IMPLEMENT THIS
+    session.pop(CURR_USER_KEY)
+    
+    return redirect('/')
 
 
 ##############################################################################
@@ -211,7 +215,37 @@ def stop_following(follow_id):
 def profile():
     """Update profile for current user."""
 
-    # IMPLEMENT THIS
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+    
+    form = UserUpdateForm(obj = g.user)
+
+    if form.validate_on_submit():
+        user = User.authenticate(g.user.username,
+                                 form.password.data)
+
+        if user:
+            g.user.username=form.username.data
+            g.user.email=form.email.data
+            g.user.image_url=form.image_url.data
+            g.user.header_image_url=form.header_image_url.data
+            g.user.bio=form.bio.data
+            
+            db.session.add(g.user)
+            db.session.commit()
+
+            flash(f"User Profile Updated!", "success")
+            return redirect(f'/users/{g.user.id}')
+            
+
+        flash("Invalid credentials. Try typing password again", 'danger')
+        return redirect('users/profile')
+
+
+    return render_template('users/edit.html', form=form)
+
+
 
 
 @app.route('/users/delete', methods=["POST"])
@@ -228,6 +262,11 @@ def delete_user():
     db.session.commit()
 
     return redirect("/signup")
+
+@app.route('/users/add_like/<int:msg_id>', methods=['POST'])
+def toggle_likes(msg_id):
+    """user can toggle likes and update database"""
+    likes
 
 
 ##############################################################################
@@ -292,11 +331,14 @@ def homepage():
     """
 
     if g.user:
+        # I tried to use User.following but this will not pull out the information for currently logged in user, but will pull all id in following table
+        following_users= [u.id for u in g.user.following] + [g.user.id]
         messages = (Message
                     .query
                     .order_by(Message.timestamp.desc())
-                    .limit(100)
-                    .all())
+                    .filter(Message.user_id.in_(following_users))
+                    .limit(100))
+                    # Message.user_id (Message is necessary due to filter())
 
         return render_template('home.html', messages=messages)
 
