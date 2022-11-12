@@ -21,7 +21,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
 app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', "it's a secret")
-toolbar = DebugToolbarExtension(app)
+# toolbar = DebugToolbarExtension(app)
 
 connect_db(app)
 
@@ -266,10 +266,33 @@ def delete_user():
 @app.route('/users/add_like/<int:msg_id>', methods=['POST'])
 def toggle_likes(msg_id):
     """user can toggle likes and update database"""
-    likes
+    clicked_msg = Message.query.get(msg_id)
+    likes = [msg.id for msg in g.user.likes]
+    
+    if( msg_id in likes ):
+        g.user.likes.remove(clicked_msg)
+    else:
+        g.user.likes.append(clicked_msg)
+    
+    db.session.add(g.user)   
+    db.session.commit()
 
+    return redirect('/')
 
-##############################################################################
+@app.route('/users/<int:user_id>/likes')
+def show_liked_message(user_id):
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    user = User.query.get_or_404(user_id)
+    liked_messages = user.likes
+    likes = [msg.id for msg in g.user.likes]
+    
+    return render_template('users/likes.html', user=user, messages=liked_messages, likes=likes)
+
+########################################################################    ######
 # Messages routes:
 
 @app.route('/messages/new', methods=["GET", "POST"])
@@ -339,8 +362,9 @@ def homepage():
                     .filter(Message.user_id.in_(following_users))
                     .limit(100))
                     # Message.user_id (Message is necessary due to filter())
+        likes = [msg.id for msg in g.user.likes]
 
-        return render_template('home.html', messages=messages)
+        return render_template('home.html', messages=messages, likes=likes)
 
     else:
         return render_template('home-anon.html')
