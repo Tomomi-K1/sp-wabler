@@ -39,9 +39,9 @@ class MessageViewTestCase(TestCase):
     def setUp(self):
         """Create test client, add sample data."""
 
-        User.query.delete()
-        Message.query.delete()
-
+        db.drop_all()
+        db.create_all()
+        
         self.client = app.test_client()
 
         self.testuser = User.signup(username="testuser",
@@ -49,7 +49,23 @@ class MessageViewTestCase(TestCase):
                                     password="testuser",
                                     image_url=None)
 
+        self.testuser_id = 8989
+        self.testuser.id = self.testuser_id
+
         db.session.commit()
+
+    def test_show_messages(self):
+        """testing if messages show up"""
+        m = Message(id=1234, text="testing", user_id=self.testuser_id)
+        db.session.add(m)
+        db.session.commit()
+        self.assertIsNotNone(m)
+
+        with self.client as c:
+            resp = c.get(f'/messages/1234')
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn('testing', str(resp.data))
 
     def test_add_message(self):
         """Can use add a message?"""
@@ -71,3 +87,58 @@ class MessageViewTestCase(TestCase):
 
             msg = Message.query.one()
             self.assertEqual(msg.text, "Hello")
+
+    def test_add_without_session(self):
+
+        with self.client as c:
+            resp = c.post('/messages/new', data={"text": "Hello"}, follow_redirects=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Access unauthorized.", str(resp.data))
+    
+    def test_add_invalid_user(self):
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = 1234503 
+                #add user that does not exist
+
+            resp = c.post('/messages/new', data={"text": "Hello"}, follow_redirects=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Access unauthorized.", str(resp.data))
+    
+    def test_message_destroy(self):
+
+        m = Message(id=1234, text="testing", user_id=self.testuser_id)
+        db.session.add(m)
+        db.session.commit()
+
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            msg = Message.query.all()
+            self.assertEqual(len(msg), 1)
+            
+            resp = c.post('/messages/1234/delete', follow_redirects=True)
+
+            m = Message.query.get(1234)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIsNone(m)
+
+    def test_message_delete_invalid_user(self):
+        
+        m = Message(id=1234, text="testing", user_id=self.testuser_id)
+        db.session.add(m)
+        db.session.commit()
+
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = 123345
+
+   
+            resp = c.post('/messages/1234/delete', follow_redirects=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn('Access unauthorized.', str(resp.data))

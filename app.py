@@ -1,4 +1,5 @@
-import os
+import os 
+# The OS module in Python provides functions for interacting with the operating system. OS comes under Python’s standard utility modules. 
 
 from flask import Flask, render_template, request, flash, redirect, session, g
 # need to import "g" https://flask.palletsprojects.com/en/1.1.x/api/#flask.g
@@ -66,6 +67,9 @@ def signup():
     If the there already is a user with that username: flash message
     and re-present form.
     """
+    # make sure to delete login info before we signup someone
+    if CURR_USER_KEY in session:
+        del session[CURR_USER_KEY]
 
     form = UserAddForm()
 
@@ -115,9 +119,11 @@ def login():
 def logout():
     """Handle logout of user."""
 
-    session.pop(CURR_USER_KEY)
+    # session.pop(CURR_USER_KEY)
+    do_logout()
     
-    return redirect('/')
+    flash('You have successfully logged out.', 'success')
+    return redirect('/login')
 
 
 ##############################################################################
@@ -228,8 +234,8 @@ def profile():
         if user:
             g.user.username=form.username.data
             g.user.email=form.email.data
-            g.user.image_url=form.image_url.data
-            g.user.header_image_url=form.header_image_url.data
+            g.user.image_url=form.image_url.data or "/static/images/default-pic.png"
+            g.user.header_image_url=form.header_image_url.data or "/static/images/warbler-hero.jpg"
             g.user.bio=form.bio.data
             
             db.session.add(g.user)
@@ -266,6 +272,11 @@ def delete_user():
 @app.route('/users/add_like/<int:msg_id>', methods=['POST'])
 def toggle_likes(msg_id):
     """user can toggle likes and update database"""
+    
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+    
     clicked_msg = Message.query.get(msg_id)
     likes = [msg.id for msg in g.user.likes]
     
@@ -274,7 +285,7 @@ def toggle_likes(msg_id):
     else:
         g.user.likes.append(clicked_msg)
     
-    db.session.add(g.user)   
+    # db.session.add(g.user)   
     db.session.commit()
 
     return redirect('/')
@@ -335,6 +346,10 @@ def messages_destroy(message_id):
         return redirect("/")
 
     msg = Message.query.get(message_id)
+    if msg.user_id != g.user.id:
+            flash("Access unauthorized.", "danger")
+            return redirect("/")
+    
     db.session.delete(msg)
     db.session.commit()
 
@@ -369,6 +384,17 @@ def homepage():
     else:
         return render_template('home-anon.html')
 
+
+
+############################
+# how to show error 404 html
+#############################
+
+# @app.errorhandler(404)
+# def page_not_found(e):
+#     """404 NOT FOUND page."""
+
+#     return render_template('404.html'), 404
 
 ##############################################################################
 # Turn off all caching in Flask
